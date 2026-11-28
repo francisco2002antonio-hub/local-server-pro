@@ -11,7 +11,7 @@ import java.io.File
 import android.util.Base64
 class ServerService:Service(){
  companion object { @Volatile var running=false
- fun address(c:Context):String? {val cm=c.getSystemService(ConnectivityManager::class.java);return cm.allNetworks.firstNotNullOfOrNull{n->if(cm.getNetworkCapabilities(n)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)==true)cm.getLinkProperties(n)?.linkAddresses?.firstOrNull{it.address is Inet4Address}?.address?.hostAddress else null}} }
+ fun address(c:Context):String? {val cm=c.getSystemService(ConnectivityManager::class.java);val networks=cm.allNetworks.toList();for(t in listOf(NetworkCapabilities.TRANSPORT_WIFI,NetworkCapabilities.TRANSPORT_ETHERNET,NetworkCapabilities.TRANSPORT_CELLULAR)){for(n in networks){if(cm.getNetworkCapabilities(n)?.hasTransport(t)==true){val ip=cm.getLinkProperties(n)?.linkAddresses?.firstOrNull{it.address is Inet4Address}?.address?.hostAddress;if(ip!=null)return ip}}};return java.net.NetworkInterface.getNetworkInterfaces()?.toList()?.filter{it.isUp&&!it.isLoopback}?.flatMap{it.inetAddresses.toList()}?.firstOrNull{it is Inet4Address&&it.isSiteLocalAddress}?.hostAddress} }
  private var server:NanoHTTPD?=null
  override fun onBind(i:Intent?):IBinder?=null
  private fun enc(s:String)=URLEncoder.encode(s,"UTF-8").replace("+","%20")
