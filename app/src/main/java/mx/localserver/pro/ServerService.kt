@@ -18,13 +18,13 @@ class ServerService:Service(){
  private fun esc(s:String)=android.text.TextUtils.htmlEncode(s)
  override fun onStartCommand(i:Intent?,flags:Int,id:Int):Int{
  val nm=getSystemService(NotificationManager::class.java);nm.createNotificationChannel(NotificationChannel("server","Servidor local",NotificationManager.IMPORTANCE_LOW));startForeground(1,Notification.Builder(this,"server").setContentTitle("Local Server Pro").setContentText("Servidor local activo").setSmallIcon(R.drawable.ic_server).build());if(server!=null)return START_NOT_STICKY
- val p=getSharedPreferences("server",0);val ip=address(this);val password=p.getString("password","")!!;val port=p.getString("port","8080")!!.toIntOrNull()?:8080
+ val p=getSharedPreferences("server",0);val ip=address(this);val username=p.getString("username","admin")!!;val password=p.getString("password","")!!;val port=p.getString("port","8080")!!.toIntOrNull()?:8080
  val root=try{p.getString("path",null)?.let{DocumentFile.fromFile(File(it))}?:p.getString("folder",null)?.let{DocumentFile.fromTreeUri(this,Uri.parse(it))}}catch(e:Exception){null}
- if(root==null||ip==null||password.length<8||!root.isDirectory){stopSelf();return START_NOT_STICKY}
+ if((p.contains("path") && android.os.Build.VERSION.SDK_INT>=30 && !android.os.Environment.isExternalStorageManager())||root==null||ip==null||password.length<8||!root.isDirectory){stopSelf();return START_NOT_STICKY}
  server=object:NanoHTTPD(ip,port){
  fun reply(status:Response.Status,t:String)=newFixedLengthResponse(status,"text/plain; charset=utf-8",t)
  override fun serve(s:IHTTPSession):Response{try{
- val expected="Basic "+Base64.encodeToString("admin:$password".toByteArray(Charsets.UTF_8),Base64.NO_WRAP)
+ val expected="Basic "+Base64.encodeToString("$username:$password".toByteArray(Charsets.UTF_8),Base64.NO_WRAP)
  if(!java.security.MessageDigest.isEqual(expected.toByteArray(),(s.headers["authorization"]?:"").toByteArray()))return reply(Response.Status.UNAUTHORIZED,"Acceso protegido").apply{addHeader("WWW-Authenticate","Basic realm=\"Local Server Pro\"")}
  if(s.method!=Method.GET)return reply(Response.Status.METHOD_NOT_ALLOWED,"Solo lectura")
  val path=s.parameters["p"]?.firstOrNull()?:"";val parts=path.split('/').filter{it.isNotEmpty()};var node:DocumentFile=root!!
