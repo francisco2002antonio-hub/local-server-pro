@@ -18,14 +18,18 @@ class ServerService:Service(){
  private fun esc(s:String)=android.text.TextUtils.htmlEncode(s)
  override fun onStartCommand(i:Intent?,flags:Int,id:Int):Int{
  val nm=getSystemService(NotificationManager::class.java);nm.createNotificationChannel(NotificationChannel("server","Servidor local",NotificationManager.IMPORTANCE_LOW));startForeground(1,Notification.Builder(this,"server").setContentTitle("Local Server Pro").setContentText("Servidor local activo").setSmallIcon(R.drawable.ic_server).build());if(server!=null)return START_NOT_STICKY
- val p=getSharedPreferences("server",0);val ip=address(this);val username=p.getString("username","admin")!!;val password=p.getString("password","")!!;val port=p.getString("port","8080")!!.toIntOrNull()?:8080
+ val p=getSharedPreferences("server",0);val ip=address(this);val auth=p.getBoolean("auth",true);val password=p.getString("password","")!!;val port=p.getString("port","8080")!!.toIntOrNull()?:8080
  val root=try{p.getString("path",null)?.let{DocumentFile.fromFile(File(it))}?:p.getString("folder",null)?.let{DocumentFile.fromTreeUri(this,Uri.parse(it))}}catch(e:Exception){null}
- if((p.contains("path") && android.os.Build.VERSION.SDK_INT>=30 && !android.os.Environment.isExternalStorageManager())||root==null||ip==null||password.length<8||!root.isDirectory){stopSelf();return START_NOT_STICKY}
+ if((p.contains("path") && android.os.Build.VERSION.SDK_INT>=30 && !android.os.Environment.isExternalStorageManager())||root==null||ip==null||(auth&&password.length<8)||!root.isDirectory){stopSelf();return START_NOT_STICKY}
  server=object:NanoHTTPD(ip,port){
+ val token=java.util.UUID.randomUUID().toString()+java.util.UUID.randomUUID().toString()
  fun reply(status:Response.Status,t:String)=newFixedLengthResponse(status,"text/plain; charset=utf-8",t)
  override fun serve(s:IHTTPSession):Response{try{
- val expected="Basic "+Base64.encodeToString("$username:$password".toByteArray(Charsets.UTF_8),Base64.NO_WRAP)
- if(!java.security.MessageDigest.isEqual(expected.toByteArray(),(s.headers["authorization"]?:"").toByteArray()))return reply(Response.Status.UNAUTHORIZED,"Acceso protegido").apply{addHeader("WWW-Authenticate","Basic realm=\"Local Server Pro\"")}
+ if(auth){
+ val cookie=s.headers["cookie"]?.split(';')?.map{it.trim()}?.firstOrNull{it.startsWith("lsp=")}?.substringAfter('=')
+ if(s.uri=="/login"&&s.method==Method.POST){val body=HashMap<String,String>();s.parseBody(body);val supplied=s.parameters["password"]?.firstOrNull()?:"";if(java.security.MessageDigest.isEqual(password.toByteArray(),supplied.toByteArray()))return newFixedLengthResponse(Response.Status.REDIRECT,"text/plain", "").apply{addHeader("Location","/");addHeader("Set-Cookie","lsp=$token; Path=/; HttpOnly; SameSite=Strict");addHeader("Cache-Control","no-store")}}
+ if(cookie!=token)return newFixedLengthResponse(Response.Status.OK,"text/html; charset=utf-8","""<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#101827;color:white;font:18px system-ui;padding:30px}input,button{display:block;padding:14px;margin:12px 0;border-radius:10px;max-width:90%}</style><h1>Local Server Pro</h1><form method="post" action="/login"><label>Contraseña<input type="password" name="password" required></label><button>Entrar</button></form>""").apply{addHeader("Cache-Control","no-store")}
+ }
  if(s.method!=Method.GET)return reply(Response.Status.METHOD_NOT_ALLOWED,"Solo lectura")
  val path=s.parameters["p"]?.firstOrNull()?:"";val parts=path.split('/').filter{it.isNotEmpty()};var node:DocumentFile=root!!
  for(part in parts){if(part==".."||part=="."||part.startsWith("."))return reply(Response.Status.FORBIDDEN,"Ruta no permitida");node=node.listFiles().firstOrNull{it.name==part}?:return reply(Response.Status.NOT_FOUND,"No encontrado");if(p.contains("path")){val base=File(p.getString("path","")!!).canonicalFile;val actual=File(node.uri.path!!).canonicalFile;if(!actual.path.startsWith(base.path+File.separator))return reply(Response.Status.FORBIDDEN,"Ruta no permitida")}}
